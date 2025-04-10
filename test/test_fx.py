@@ -1,5 +1,6 @@
 # Owner(s): ["module: fx"]
 # ruff: noqa: F841
+# flake8: noqa: E221
 
 import builtins
 import collections
@@ -710,24 +711,24 @@ class TestFX(JitTestCase):
     def test_stack_traces(self):
         class M(torch.nn.Module):
             def forward(self, a, b):
-                return a + b
+                c = a + b
+                c = a * c
+                return c
 
         tracer = torch.fx.Tracer()
         tracer.record_stack_traces = True
 
         graph = tracer.trace(M())
         # saving the original list because we will insert new nodes as a part of a test
-        orig_graph_nodes = list(graph.nodes)
-        for node in orig_graph_nodes:
-            if node.op == "output":
-                continue
-            self.assertTrue(node.stack_trace is not None)
-            assert "test_fx.py" in node.stack_trace
-
-            # verify that copying the node does not lose the stack trace
-            new_node = graph.node_copy(node)
-            self.assertTrue(new_node.stack_trace is not None)
-            assert "test_fx.py" in new_node.stack_trace
+        stack_traces = "\n".join([node.meta.get("stack_trace", "") for node in graph.nodes])
+        self.assertExpectedInline(
+            stack_traces.strip(),
+"""\
+File "/data/users/angelayi/pytorch/test/test_fx.py", line 714, in forward
+    c = a + b
+File "/data/users/angelayi/pytorch/test/test_fx.py", line 715, in forward
+    c = a * c""",
+        )
 
     def test_stack_traces_with_transformer(self):
         class M(torch.nn.Module):
