@@ -1,8 +1,12 @@
 import copy
 import typing
+import types
+import functools
 
 import torch
+from torch.export import export, Dim, ShapesCollection
 from torch.export.exported_program import _decompose_exported_program
+from torch.utils._pytree import tree_flatten
 
 
 def _copy_graph_module_and_signature(
@@ -67,3 +71,33 @@ def _export_forward_backward(
     _remove_detach_pass(gm, new_graph_signature)
 
     return ep._update(gm, new_graph_signature)
+
+def _sticky_export(forward_func):
+    """
+    Lazily export the model on first forward call.
+    Usage:
+        model.forward = _sticky_export(model.forward)
+    """
+    model = forward_func.__self__
+    original_forward = forward_func.__func__
+
+    @functools.wraps(forward_func)
+    def wrapper(*args, **kwargs):
+        if not hasattr(wrapper, "_exported_module"):
+            # Unpatch forward to avoid recursion during export
+            model.forward = types.MethodType(original_forward, model)
+
+            try:
+                wrapper._exported_module = export(
+                    model,
+                    args,
+                    kwargs,
+                    strict=False
+                ).module()
+            finally:
+                # Restore the wrapper after export
+                model.forward = wrapper
+
+        return wrapper._exported_module(*args, **kwargs)
+
+    return wrapper
