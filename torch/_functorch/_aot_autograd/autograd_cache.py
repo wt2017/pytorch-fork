@@ -181,6 +181,11 @@ def check_node_safe(node: Node):
 
     # I'd love to use a match statement here, but it wasn't introduced until py3.10
     if node.op == "call_function":
+        if node.meta and node.meta.get("is_wrapped", False):
+            # This is fx.wrap function
+            if node.meta.get("user_cache_hash", None):
+                # If user explicitly specified cache hash - allow to cache it.
+                return
         # We support only torch.* functions for now
         # We can probably add an allowlist of safe non-torch implementations as well
         if not is_torch_function(node.target):
@@ -239,6 +244,15 @@ def check_cacheable(gm: torch.fx.GraphModule):
         )
     for node in nodes:
         check_node_safe(node)
+
+    # Saved tensors hooks are globally set subgraphs,
+    # that are not used explicitly in the main graph.
+    # They are inlined in aot_autograd graphs.
+    # Subgraphs are only used for caching logic.
+    if hasattr(gm, "saved_tensors_hooks_pack_0"):
+        check_cacheable(gm.saved_tensors_hooks_pack_0)  # type: ignore[arg-type]
+        # We have guarantee of unpack sugraph existance if pack subgraph exists
+        check_cacheable(gm.saved_tensors_hooks_unpack_0)  # type: ignore[arg-type]
 
 
 def check_metadata_cacheable(metadata: ViewAndMutationMeta):
