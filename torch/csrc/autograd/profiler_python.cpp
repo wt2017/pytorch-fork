@@ -646,9 +646,7 @@ struct ThreadLocalResults {
   ThreadLocalResults& operator=(const ThreadLocalResults&) = delete;
   ThreadLocalResults& operator=(const ThreadLocalResults&&) = delete;
 
-  ~ThreadLocalResults() {
-    Py_DECREF((PyObject*)ctx_);
-  }
+  ~ThreadLocalResults() {}
 
   template <CallType C, EventType E, typename Ephemeral, typename... Args>
   TraceKey intern(Ephemeral ephemeral, Args... args) {
